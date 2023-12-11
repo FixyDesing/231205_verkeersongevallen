@@ -1,0 +1,394 @@
+---
+title: "231205_verkeersongevallen"
+author: "Robbe Van Molle"
+date: "2023-12-05"
+output: html_document
+---
+
+```{r}
+#install and load readxl package
+install.packages("xfun")
+packageVersion("xfun")
+
+#install.packages('readxl')
+library(readxl)
+library(dplyr)
+library(treemap)
+library(tidyverse)
+library(viridis)
+library(patchwork)
+library(hrbrthemes)
+library(circlize)
+
+```
+
+```{r}
+#import Excel file into R
+data <- read_excel('DATA/verkeersongevallen2017-2022.xlsx')
+
+data
+```
+```{r}
+summary(data)
+
+```
+
+```{r}
+view(dfSummary(data, plain.ascii = FALSE, style = "grid", graph.magnif = 1))
+
+```
+
+
+```{r}
+# Data aggregatie
+year_counts <- table(data$DT_YEAR_COLLISION)
+
+# Lijngrafiek maken met base R
+plot(year_counts, type = "o", col = "blue",
+     xlab = "Jaar", ylab = "Aantal botsingen",
+     main = "Aantal botsingen per jaar")
+
+# Als alternatief met ggplot2
+library(ggplot2)
+year_counts_df <- as.data.frame(year_counts)
+ggplot(year_counts_df, aes(Var1, Freq)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Jaar", y = "Aantal botsingen",
+       title = "Aantal botsingen per jaar")
+```
+
+```{r}
+# Data aggregatie voor maanden
+month_counts <- table(data$DT_MONTH_COLLISION)
+
+# Lijngrafiek maken met base R
+plot(month_counts, type = "o", col = "red",
+     xlab = "Maand", ylab = "Aantal botsingen",
+     main = "Aantal botsingen per maand")
+
+# Als alternatief met ggplot2
+library(ggplot2)
+month_counts_df <- as.data.frame(month_counts)
+ggplot(month_counts_df, aes(Var1, Freq)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Maand", y = "Aantal botsingen",
+       title = "Aantal botsingen per maand")
+
+```
+
+### gefilterde data op "dodelijk gewonden" en "Met doden"
+```{r}
+# Filteren van de dataset
+gefilterde_data <- data %>%
+  filter(TX_CLASS_ACCIDENTS_NL %in% c("dodelijk gewonden", "Met doden"))
+
+# Creëer een datumkolom
+gefilterde_data <- gefilterde_data %>%
+  mutate(YEAR_MONTH_DAY = as.Date(paste(DT_YEAR_COLLISION, DT_MONTH_COLLISION, "01", sep = "-")))
+
+# Creëer een tijdskolom, verander 'as.Date' naar 'as.POSIXct'
+gefilterde_data <- gefilterde_data %>%
+  mutate(TIME_DT = as.POSIXct(paste(DT_TIME, "00", "00", sep = ":"), format = "%H:%M:%S"))
+
+# Combineer datum en tijd in één kolom
+gefilterde_data <- gefilterde_data %>%
+  mutate(YEAR_MONTH_DAY_HOUR = as.POSIXct(paste(YEAR_MONTH_DAY, format(TIME_DT, "%T")), 
+                                          format = "%Y-%m-%d %H:%M:%S"))
+
+gefilterde_data <- gefilterde_data %>%
+  select(-CD_CROSSWAY, -CD_WEATHER, -CD_ROAD_CONDITION, -CD_BUILD_UP_AREA, -CD_LIGHT_CONDITION, -CD_ROAD_TYPE, -CD_CLASS_ACCIDENTS, -CD_ROAD_USR_TYPE1, -CD_ROAD_USR_TYPE2, -CD_COLLISION_TYPE, -CD_OBSTACLES, -MS_X_COORD, -MS_Y_COORD)
+
+gefilterde_data <- gefilterde_data %>%
+  select(DT_YEAR_COLLISION, DT_MONTH_COLLISION, DT_TIME, YEAR_MONTH_DAY, YEAR_MONTH_DAY_HOUR, TIME_DT, everything())
+
+gefilterde_data
+```
+
+```{r}
+summary(gefilterde_data)
+
+```
+
+```{r}
+view(dfSummary(gefilterde_data, plain.ascii = FALSE, style = "grid", graph.magnif = 1))
+
+```
+
+
+```{r}
+gefilterde_year_counts <- table(gefilterde_data$DT_YEAR_COLLISION)
+
+
+plot(gefilterde_year_counts, type = "o", col = "blue",
+     xlab = "Jaar", ylab = "Aantal dodelijk gewonden en Met doden",
+     main = "Aantal doden per jaar")
+```
+
+```{r}
+gefilterde_month_counts <- table(gefilterde_data$DT_MONTH_COLLISION)
+
+
+plot(gefilterde_month_counts, type = "o", col = "red",
+     xlab = "Maant", ylab = "Aantal dodelijk gewonden en Met doden",
+     main = "Aantal botsingen per maand")
+```
+
+```{r}
+
+
+gefilterde_year_month_counts <- table(gefilterde_data$YEAR_MONTH_DAY)
+
+
+plot(gefilterde_year_month_counts, type = "o", col = "green",
+     xlab = "Maant", ylab = "Aantal dodelijk gewonden en Met doden",
+     main = "Aantal botsingen per maand")
+
+```
+
+```{r}
+
+# Veronderstel dat gefilterde_data je dataset is
+# Filter de ongeldige waarde uit
+gefilterde_data <- gefilterde_data %>% 
+  filter(DT_TIME != 99)
+
+# Bereken het aantal ongevallen per tijd en maand
+gefilterde_data_2 <- gefilterde_data %>%
+  group_by(TIME_DT, DT_MONTH_COLLISION) %>%
+  summarise(aantal_ongevallen = n(), .groups = 'drop') %>%
+  mutate(MONTH = factor(DT_MONTH_COLLISION))  # Maak een factor voor de maanden
+
+# Maak de grafiek
+ggplot(data = gefilterde_data_2, aes(x = TIME_DT, y = aantal_ongevallen, group = MONTH, color = MONTH)) +
+  geom_line() +
+  theme_ipsum() +
+  labs(title = "Ongevallen per Tijd en Maand",
+       x = "Tijd van de Dag",
+       y = "Aantal Ongevallen",
+       color = "Maand")
+
+# Maak de small multiple grafiek met vaste y-as limieten
+ggplot(data = gefilterde_data_2, aes(x = TIME_DT, y = aantal_ongevallen, group = MONTH, color = MONTH)) +
+  geom_line() +
+  facet_wrap(~ MONTH, scales = "free_x") +  # Vrije schaal alleen voor de x-as
+  ylim(0, 25) +  # Stel de y-as limieten in
+  theme_ipsum() +
+  labs(title = "Ongevallen per Tijd en Maand",
+       x = "Tijd van de Dag",
+       y = "Aantal Ongevallen",
+       color = "Maand")
+
+
+
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(hrbrthemes)  # voor theme_ipsum()
+
+# Zorg ervoor dat DT_TIME correct geformatteerd is als uur
+gefilterde_data <- gefilterde_data %>%
+  mutate(HOUR = format(as.POSIXct(TIME_DT, format = "%H:%M:%S"), "%H"))
+
+# Bereken het aantal ongevallen per uur, maand en jaar
+gefilterde_data_agg <- gefilterde_data %>%
+  group_by(DT_YEAR_COLLISION, DT_MONTH_COLLISION, TIME_DT) %>%
+  summarise(aantal_ongevallen = n(), .groups = 'drop') %>%
+  mutate(MONTH = factor(DT_MONTH_COLLISION), YEAR = factor(DT_YEAR_COLLISION))
+
+# Maak de small multiple grafiek
+ggplot(data = gefilterde_data_agg, aes(x = HOUR, y = aantal_ongevallen, group = MONTH, color = MONTH)) +
+  geom_line() +
+  facet_wrap(~ YEAR, scales = "free_x") +  # Elke plot voor een jaar
+  scale_y_continuous(limits = c(0, 25)) +  # Vaste y-as limieten
+  theme_ipsum() +
+  labs(title = "Ongevallen per Uur, Maand en Jaar",
+       x = "Uur van de Dag",
+       y = "Aantal Ongevallen",
+       color = "Maand")
+
+```
+
+
+```{r}
+# Voorbeeld data laden (vervang dit met uw eigen dataset)
+# gefilterde_data <- uw_dataset_laden()
+
+# Data aggregeren
+geaggregeerde_data <- gefilterde_data %>%
+  group_by(DT_YEAR_COLLISION, TX_CLASS_ACCIDENTS_NL) %>%
+  summarise(Aantal = n(), .groups = 'drop')
+
+ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=DT_YEAR_COLLISION)) + 
+    geom_bar(position="stack", stat="identity")
+
+
+# Voorbeeld data laden (vervang dit met uw eigen dataset)
+# gefilterde_data <- uw_dataset_laden()
+
+# Data aggregeren
+geaggregeerde_data <- gefilterde_data %>%
+  group_by(DT_YEAR_COLLISION, TX_CLASS_ACCIDENTS_NL) %>%
+  summarise(Aantal = n(), .groups = 'drop')
+
+# 100% Gestapelde staafdiagram
+ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=DT_YEAR_COLLISION)) + 
+    geom_bar(position="fill", stat="identity") + 
+    scale_y_continuous(labels = scales::percent)
+
+```
+
+```{r}
+# Voorbeeld data laden (vervang dit met uw eigen dataset)
+# gefilterde_data <- uw_dataset_laden()
+
+# Data aggregeren
+geaggregeerde_data <- gefilterde_data %>%
+  group_by(YEAR_MONTH_DAY, TX_CLASS_ACCIDENTS_NL) %>%
+  summarise(Aantal = n(), .groups = 'drop')
+
+ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=YEAR_MONTH_DAY)) + 
+    geom_bar(position="stack", stat="identity")
+
+
+# Voorbeeld data laden (vervang dit met uw eigen dataset)
+# gefilterde_data <- uw_dataset_laden()
+
+# Data aggregeren
+geaggregeerde_data <- gefilterde_data %>%
+  group_by(YEAR_MONTH_DAY, TX_CLASS_ACCIDENTS_NL) %>%
+  summarise(Aantal = n(), .groups = 'drop')
+
+# 100% Gestapelde staafdiagram
+ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=YEAR_MONTH_DAY)) + 
+    geom_bar(position="fill", stat="identity") + 
+    scale_y_continuous(labels = scales::percent)
+
+```
+
+
+
+```{r}
+
+library(tidyr)
+
+# Voorbeeld data (vervang dit met uw eigen dataset)
+# geaggregeerde_data <- uw_geaggregeerde_dataset
+
+# De data omvormen naar wide formaat
+brede_data <- geaggregeerde_data %>%
+  pivot_wider(names_from = TX_CLASS_ACCIDENTS_NL, values_from = Aantal)
+
+# De resulterende dataset bekijken
+brede_data
+```
+
+
+
+```{r}
+# Bibliotheken laden
+library(dplyr)
+
+# Voorbeeld data (vervang dit met uw eigen dataset)
+# brede_data <- uw_brede_dataset
+
+# Procentuele verandering berekenen en toevoegen
+brede_data <- brede_data %>%
+  arrange(DT_YEAR_COLLISION) %>%
+  mutate(
+    Percentage_Stijging_Met_Doden = ((`Met doden` / lag(`Met doden`)) - 1) * 100,
+    Percentage_Stijging_Dodelijk_Gewonden = ((`dodelijk gewonden` / lag(`dodelijk gewonden`)) - 1) * 100
+  )
+
+# Vervang NA met 0 of een andere waarde indien nodig
+brede_data[is.na(brede_data)] <- 0
+
+# De resulterende dataset bekijken
+print(brede_data)
+```
+
+
+```{r}
+# Bibliotheken laden
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Voorbeeld data (vervang dit met uw eigen dataset)
+# brede_data <- uw_brede_dataset
+
+# Data omzetten voor staafdiagram
+lange_data <- brede_data %>%
+  pivot_longer(
+    cols = starts_with("Percentage_Stijging"),
+    names_to = "Categorie",
+    values_to = "Percentage"
+  )
+
+# Staafdiagram maken
+ggplot(lange_data, aes(x = DT_YEAR_COLLISION, y = Percentage, fill = Categorie)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  theme_minimal() +
+  labs(title = "Procentuele Verandering per Jaar",
+       x = "Jaar",
+       y = "Procentuele Verandering",
+       fill = "Categorie")
+
+```
+
+
+```{r}
+# Voorbereiden van de data
+data_summary <- data %>%
+  group_by(TX_MUNTY_COLLISION_NL) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
+
+# Maken van de treemap
+treemap(data_summary,
+        index = "TX_MUNTY_COLLISION_NL",
+        vSize = "Count",
+        title = "Treemap van TX_MUNTY_COLLISION_NL")
+```
+
+```{r}
+# Voorbereiden van de data
+links <- data %>%
+  count(TX_ROAD_USR_TYPE2_NL = TX_ROAD_USR_TYPE1_NL, Target = TX_ROAD_USR_TYPE2_NL) %>%
+  filter(n > 0)
+
+# Creëren van een lijst van unieke nodes
+nodes <- data.frame(name = unique(c(links$TX_ROAD_USR_TYPE2_NL, links$Target)))
+
+# Omzetten van de bron- en doelnamen naar indices
+links$TX_ROAD_USR_TYPE2_NL <- match(links$Source, nodes$name) - 1
+links$Target <- match(links$Target, nodes$name) - 1
+
+# Maken van het Sankey-diagram
+sankeyNetwork(Links = links, Nodes = nodes, Source = "Source", Target = "Target", 
+              Value = "n", NodeID = "name", units = "Aantal")
+
+```
+
+```{r}
+#install.packages("networkD3")
+
+# Laden van de benodigde library
+library(networkD3)
+
+# Uw bestaande code
+nodes <- data.frame(name=c(as.character(gefilterde_data$TX_ROAD_USR_TYPE1_NL), as.character(gefilterde_data$TX_ROAD_USR_TYPE2_NL)) %>% unique())
+
+gefilterde_data$IDTX_ROAD_USR_TYPE1_NL=match(gefilterde_data$TX_ROAD_USR_TYPE1_NL, nodes$name)-1 
+gefilterde_data$IDTX_ROAD_USR_TYPE2_NL=match(gefilterde_data$TX_ROAD_USR_TYPE2_NL, nodes$name)-1
+
+ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
+
+sankeyNetwork(Links = gefilterde_data, Nodes = nodes, Source = "IDTX_ROAD_USR_TYPE1_NL", Target = "IDTX_ROAD_USR_TYPE2_NL", Value = "value", NodeID = "name", sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
+
+```
+
