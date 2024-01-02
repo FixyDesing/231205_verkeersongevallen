@@ -2,27 +2,53 @@
 title: "231205_verkeersongevallen"
 author: "Robbe Van Molle"
 date: "2023-12-05"
-output: html_document
+output:
+  html_document: default
 ---
 
-```{r}
+```{r setup}
+knitr::opts_chunk$set(warning = FALSE, echo=FALSE)
+```
+
+
+## Inleiding
+Dit document presenteert een aantal data schetsen van verkeersongevallen van 2017 tot 2022. Ik  onderzocht trends, patronen en contextuele factoren die bijdragen aan ongevallen. De gebruikte data is afkomstig van Stadbel en bevat informatie over datum, tijd, locatie, soort ongevallen, ... . Dit document kan aan gevuld worden naargelang er nieuwe vragen zich voordoen. 
+
+```{r, include=FALSE, echo=FALSE}
 #install and load readxl package
-install.packages("xfun")
-packageVersion("xfun")
 
 #install.packages('readxl')
 library(readxl)
 library(dplyr)
+#install.packages('treemap')
 library(treemap)
 library(tidyverse)
 library(viridis)
 library(patchwork)
-library(hrbrthemes)
+#install.packages("htmltools")
+#packageVersion("htmltools")
+
+library(htmltools)
 library(circlize)
+library(summarytools)
+library(ggplot2)
+
+library(ggplot2)
+library(dplyr)
+
+#install.packages("fastmap")
+#packageVersion("fastmap")
+
+
+#install.packages("hrbrthemes")
+#packageVersion("hrbrthemes")
+library(hrbrthemes)  # voor theme_ipsum()
+library(networkD3)
+library(reshape2)
 
 ```
 
-```{r}
+```{r, include=FALSE}
 #import Excel file into R
 data <- read_excel('DATA/verkeersongevallen2017-2022.xlsx')
 
@@ -33,11 +59,16 @@ summary(data)
 
 ```
 
-```{r}
-view(dfSummary(data, plain.ascii = FALSE, style = "grid", graph.magnif = 1))
+
+```{r, include=FALSE, echo=FALSE}
+dfSummary(data, plain.ascii = FALSE, style = "grid", graph.magnif = 1)
+
 
 ```
 
+## Over tijd
+
+De onderstaande lijngrafiek toont het aantal verkeersongevallen per jaar van 2017 tot 2022. Uiteraard is er een dip in 2020 en stijgt deze terug nadien om ongeveer op hetzelfde niveau te komen als 2019.
 
 ```{r}
 # Data aggregatie
@@ -48,15 +79,10 @@ plot(year_counts, type = "o", col = "blue",
      xlab = "Jaar", ylab = "Aantal botsingen",
      main = "Aantal botsingen per jaar")
 
-# Als alternatief met ggplot2
-library(ggplot2)
-year_counts_df <- as.data.frame(year_counts)
-ggplot(year_counts_df, aes(Var1, Freq)) +
-  geom_line() +
-  geom_point() +
-  labs(x = "Jaar", y = "Aantal botsingen",
-       title = "Aantal botsingen per jaar")
 ```
+
+
+Deze grafiek toont het aantal verkeersongevallen per maand cumulatief van 2017 tot 2022. Opvallend is dat in de maanden met het meeste licht er toch de meeste ongevallen zijn, afgezien van de maanden juli en augustus. Dit is te verklaren door de zomervakantie.
 
 ```{r}
 # Data aggregatie voor maanden
@@ -66,20 +92,13 @@ month_counts <- table(data$DT_MONTH_COLLISION)
 plot(month_counts, type = "o", col = "red",
      xlab = "Maand", ylab = "Aantal botsingen",
      main = "Aantal botsingen per maand")
-
-# Als alternatief met ggplot2
-library(ggplot2)
-month_counts_df <- as.data.frame(month_counts)
-ggplot(month_counts_df, aes(Var1, Freq)) +
-  geom_line() +
-  geom_point() +
-  labs(x = "Maand", y = "Aantal botsingen",
-       title = "Aantal botsingen per maand")
-
 ```
 
-### gefilterde data op "dodelijk gewonden" en "Met doden"
-```{r}
+## Gefilterde data op "dodelijk gewonden" en "Met doden"
+
+Vanaf dit punt zijn alle grafieken gemaakt op basis van data met alleen de 'dodelijk gewonden' en 'met doden'. (Tenzij anders aangegeven)
+
+```{r, include=FALSE}
 # Filteren van de dataset
 gefilterde_data <- data %>%
   filter(TX_CLASS_ACCIDENTS_NL %in% c("dodelijk gewonden", "Met doden"))
@@ -104,18 +123,67 @@ gefilterde_data <- gefilterde_data %>%
   select(DT_YEAR_COLLISION, DT_MONTH_COLLISION, DT_TIME, YEAR_MONTH_DAY, YEAR_MONTH_DAY_HOUR, TIME_DT, everything())
 
 gefilterde_data
+write.csv(gefilterde_data, "DATA/gefilterde_data.csv")
+
 ```
+
+```{r, include=FALSE, echo=FALSE}
+# Filteren van de dataset
+gefilterde_data_2 <- data
+
+# Creëer een datumkolom
+gefilterde_data_2 <- gefilterde_data_2 %>%
+  mutate(YEAR_MONTH_DAY = as.Date(paste(DT_YEAR_COLLISION, DT_MONTH_COLLISION, "01", sep = "-")))
+
+# Creëer een tijdskolom, verander 'as.Date' naar 'as.POSIXct'
+gefilterde_data_2 <- gefilterde_data_2 %>%
+  mutate(TIME_DT = as.POSIXct(paste(DT_TIME, "00", "00", sep = ":"), format = "%H:%M:%S"))
+
+# Combineer datum en tijd in één kolom
+gefilterde_data_2 <- gefilterde_data_2 %>%
+  mutate(YEAR_MONTH_DAY_HOUR = as.POSIXct(paste(YEAR_MONTH_DAY, format(TIME_DT, "%T")), 
+                                          format = "%Y-%m-%d %H:%M:%S"))
+
+gefilterde_data_2 <- gefilterde_data_2 %>%
+  select(-CD_CROSSWAY, -CD_WEATHER, -CD_ROAD_CONDITION, -CD_BUILD_UP_AREA, -CD_LIGHT_CONDITION, -CD_ROAD_TYPE, -CD_CLASS_ACCIDENTS, -CD_ROAD_USR_TYPE1, -CD_ROAD_USR_TYPE2, -CD_COLLISION_TYPE, -CD_OBSTACLES, -MS_X_COORD, -MS_Y_COORD)
+
+gefilterde_data_2 <- gefilterde_data_2 %>%
+  select(DT_YEAR_COLLISION, DT_MONTH_COLLISION, DT_TIME, YEAR_MONTH_DAY, YEAR_MONTH_DAY_HOUR, TIME_DT, everything())
+
+gefilterde_data_2
+```
+
 
 ```{r}
 summary(gefilterde_data)
 
 ```
 
-```{r}
-view(dfSummary(gefilterde_data, plain.ascii = FALSE, style = "grid", graph.magnif = 1))
+Een klijne eerste analyse per kolom na het keusen van de data.
+
+```{r, echo=FALSE, results='asis'}
+dfSummary(gefilterde_data, plain.ascii = FALSE, style = "grid", graph.magnif = 1)
 
 ```
 
+```{r, warning=FALSE}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_CROSSWAY_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Ongevallen op of buiten een kruispunt", x = " ", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+```{r, warning=FALSE}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_BUILD_UP_AREA_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Ongevallen binnen of buiten de bebouwde kom", x = "Voertuigtype", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+
+De onderstaande lijngrafiek toont het aantal verkeersdoden per jaar van 2017 tot 2022. Uiteraard is er een dip in 2020; de jaren nadien is er een lichte stijging, maar niet dezelfde stijging als in de grafiek met alle ongevallen.
 
 ```{r}
 gefilterde_year_counts <- table(gefilterde_data$DT_YEAR_COLLISION)
@@ -126,91 +194,130 @@ plot(gefilterde_year_counts, type = "o", col = "blue",
      main = "Aantal doden per jaar")
 ```
 
-```{r}
-gefilterde_month_counts <- table(gefilterde_data$DT_MONTH_COLLISION)
+Als we kijken naar het aantal verkeersongevallen per maand cumulatief van 2017 tot 2022, valt op dat juli een piekmaand is, in tegenstelling tot de grafiek met alle ongevallen.
 
-
-plot(gefilterde_month_counts, type = "o", col = "red",
-     xlab = "Maant", ylab = "Aantal dodelijk gewonden en Met doden",
-     main = "Aantal botsingen per maand")
+```{r, warning=FALSE}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$DT_MONTH_COLLISION))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Seizoensgebonden Trends in Ongevallen", x = "Maand", y = "Aantal Ongevallen") +
+  theme_minimal()
 ```
 
+Evolutie van het aantal dodelijke ongevallen van 2017 tot 2022. De piekmaanden zijn 2018-07-01 met 72 en 2020-09-01 met 71.
+
 ```{r}
-
-
 gefilterde_year_month_counts <- table(gefilterde_data$YEAR_MONTH_DAY)
 
 
 plot(gefilterde_year_month_counts, type = "o", col = "green",
      xlab = "Maant", ylab = "Aantal dodelijk gewonden en Met doden",
-     main = "Aantal botsingen per maand")
-
+     main = "Aantal doden per maand")
 ```
 
-```{r}
+### Licht en donker
 
-# Veronderstel dat gefilterde_data je dataset is
-# Filter de ongeldige waarde uit
-gefilterde_data <- gefilterde_data %>% 
-  filter(DT_TIME != 99)
-
-# Bereken het aantal ongevallen per tijd en maand
-gefilterde_data_2 <- gefilterde_data %>%
-  group_by(TIME_DT, DT_MONTH_COLLISION) %>%
-  summarise(aantal_ongevallen = n(), .groups = 'drop') %>%
-  mutate(MONTH = factor(DT_MONTH_COLLISION))  # Maak een factor voor de maanden
-
-# Maak de grafiek
-ggplot(data = gefilterde_data_2, aes(x = TIME_DT, y = aantal_ongevallen, group = MONTH, color = MONTH)) +
-  geom_line() +
-  theme_ipsum() +
-  labs(title = "Ongevallen per Tijd en Maand",
-       x = "Tijd van de Dag",
-       y = "Aantal Ongevallen",
-       color = "Maand")
-
-# Maak de small multiple grafiek met vaste y-as limieten
-ggplot(data = gefilterde_data_2, aes(x = TIME_DT, y = aantal_ongevallen, group = MONTH, color = MONTH)) +
-  geom_line() +
-  facet_wrap(~ MONTH, scales = "free_x") +  # Vrije schaal alleen voor de x-as
-  ylim(0, 25) +  # Stel de y-as limieten in
-  theme_ipsum() +
-  labs(title = "Ongevallen per Tijd en Maand",
-       x = "Tijd van de Dag",
-       y = "Aantal Ongevallen",
-       color = "Maand")
+Aantal verkeersdoden per uur cumulatief van 2017 tot 2022. De meeste dodelijke ongevallen gebeuren in de late namiddag vroege avond.
 
 
-
+```{r, warning=FALSE}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$DT_TIME))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Tijdstip van Ongevallen", x = "Uur van de Dag", y = "Aantal Ongevallen") +
+  theme_minimal()
 ```
 
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(hrbrthemes)  # voor theme_ipsum()
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_LIGHT_CONDITION_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Ongevallen licht condieties", x = "Licht condieeties", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
 
-# Zorg ervoor dat DT_TIME correct geformatteerd is als uur
-gefilterde_data <- gefilterde_data %>%
-  mutate(HOUR = format(as.POSIXct(TIME_DT, format = "%H:%M:%S"), "%H"))
+### Nat en droog
 
-# Bereken het aantal ongevallen per uur, maand en jaar
-gefilterde_data_agg <- gefilterde_data %>%
-  group_by(DT_YEAR_COLLISION, DT_MONTH_COLLISION, TIME_DT) %>%
-  summarise(aantal_ongevallen = n(), .groups = 'drop') %>%
-  mutate(MONTH = factor(DT_MONTH_COLLISION), YEAR = factor(DT_YEAR_COLLISION))
 
-# Maak de small multiple grafiek
-ggplot(data = gefilterde_data_agg, aes(x = HOUR, y = aantal_ongevallen, group = MONTH, color = MONTH)) +
-  geom_line() +
-  facet_wrap(~ YEAR, scales = "free_x") +  # Elke plot voor een jaar
-  scale_y_continuous(limits = c(0, 25)) +  # Vaste y-as limieten
-  theme_ipsum() +
-  labs(title = "Ongevallen per Uur, Maand en Jaar",
-       x = "Uur van de Dag",
-       y = "Aantal Ongevallen",
-       color = "Maand")
 
+
+```{r}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_WEATHER_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Ongevallen weer type", x = "Weer", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+De zelfde grfiek maar zonder "Normaal"
+
+```{r}
+# Data filteren om de categorie "Normaal" te verwijderen
+gefilterde_data_zonder_normaal <- gefilterde_data %>% 
+  filter(TX_WEATHER_NL != "Normaal")
+
+# De ggplot maken zonder "Normaal"
+ggplot(gefilterde_data_zonder_normaal, aes(x = factor(TX_WEATHER_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Ongevallen weer typer (zonder Normaal)", x = "Weer", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+Hoe is de staat van de weg.
+
+```{r}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_ROAD_CONDITION_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Ongevallen weg staat", x = "Staat van de weg", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+```{r}
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+#library(networkD3)
+
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
+
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_WEATHER_NL, gefilterde_data$TX_ROAD_CONDITION_NL))
+
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
+
+```
+
+
+## Ter plaatse overleden of binnen 30 dagen na het ongeval
+
+In de onderstaande grafiek kijken we naar het aantal mensen dat ter plaatse is overleden en het aantal mensen dat binnen 30 dagen na het ongeval is overleden.
+
+```{r}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_CLASS_ACCIDENTS_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Type Ongevallen", x = "Type Ongeval", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_bw()
 ```
 
 
@@ -225,8 +332,11 @@ geaggregeerde_data <- gefilterde_data %>%
 
 ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=DT_YEAR_COLLISION)) + 
     geom_bar(position="stack", stat="identity")
+```
 
+Als we dit afzetten tegenover 100%, zien we dat het aantal mensen dat ter plaatse sterft rond de 75% blijft.
 
+```{r}
 # Voorbeeld data laden (vervang dit met uw eigen dataset)
 # gefilterde_data <- uw_dataset_laden()
 
@@ -239,10 +349,11 @@ geaggregeerde_data <- gefilterde_data %>%
 ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=DT_YEAR_COLLISION)) + 
     geom_bar(position="fill", stat="identity") + 
     scale_y_continuous(labels = scales::percent)
-
 ```
 
-```{r}
+Hier onder doen we het zlefd maar maandelijks
+
+```{r, warning=FALSE}
 # Voorbeeld data laden (vervang dit met uw eigen dataset)
 # gefilterde_data <- uw_dataset_laden()
 
@@ -253,8 +364,9 @@ geaggregeerde_data <- gefilterde_data %>%
 
 ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=YEAR_MONTH_DAY)) + 
     geom_bar(position="stack", stat="identity")
+```
 
-
+```{r, warning=FALSE}
 # Voorbeeld data laden (vervang dit met uw eigen dataset)
 # gefilterde_data <- uw_dataset_laden()
 
@@ -267,12 +379,10 @@ geaggregeerde_data <- gefilterde_data %>%
 ggplot(geaggregeerde_data, aes(fill=TX_CLASS_ACCIDENTS_NL, y=Aantal, x=YEAR_MONTH_DAY)) + 
     geom_bar(position="fill", stat="identity") + 
     scale_y_continuous(labels = scales::percent)
-
 ```
 
 
-
-```{r}
+```{r, include=FALSE, echo=FALSE}
 
 library(tidyr)
 
@@ -287,63 +397,298 @@ brede_data <- geaggregeerde_data %>%
 brede_data
 ```
 
+De volgende twee grefieken tonen het typer van voertuigen die betrokken zijn bij het ongeval. In de eerste zien je typer 1 en in de volgende zie je type 2.
+
+```{r}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_ROAD_USR_TYPE1_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Betrokken Voertuigtypes bij Ongevallen", x = "Voertuigtype", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+```{r}
+ggplot(gefilterde_data, aes(x = factor(gefilterde_data$TX_ROAD_USR_TYPE2_NL))) +
+  geom_bar(fill="#E07154", alpha=0.8, width=.4) +
+  labs(title = "Betrokken Voertuigtypes bij Ongevallen", x = "Voertuigtype", y = "Aantal Ongevallen") +
+  coord_flip() +
+  theme_minimal()
+```
+
+Het onderstaande Sankey-diagram illustreert de stroom van verkeersongevallen, van type 1 (links) naar type 2 (rechts). Deze visualisatie benadrukt dat vooral personewagens betrokken zijn bij ongevallen.
+
+```{r}
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
+
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_ROAD_USR_TYPE1_NL, gefilterde_data$TX_ROAD_USR_TYPE2_NL))
+
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
+```
+
+Dit is de zelfde visualisatie maar als headmap.
+
+```{r}
+# Bereken de crosstab
+road_usr_type_combinations <- table(gefilterde_data$TX_ROAD_USR_TYPE1_NL, gefilterde_data$TX_ROAD_USR_TYPE2_NL)
+
+# Omzetten van de tabel naar een dataframe voor ggplot
+melted_data <- melt(road_usr_type_combinations)
+
+# Maak de heatmap
+ggplot(melted_data, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  labs(title = "Combinaties van Weggebruikerstypen bij Ongevallen", x = "Type 2 Weggebruikers", y = "Type 1 Weggebruikers") +
+  scale_fill_gradient(low = "#FCD9BE", high = "#AA3228") +
+  theme_minimal()
+```
+
+```{r, include=FALSE, echo=FALSE}
+# Eerst bereken je de totale ongevallen per type in TX_ROAD_USR_TYPE1_NL
+total_per_type1 <- as.data.frame(table(gefilterde_data$TX_ROAD_USR_TYPE1_NL))
+names(total_per_type1) <- c("Type", "Total")
+
+# Vervolgens bereken je de ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_ROAD_USR_TYPE1_NL, gefilterde_data$TX_ROAD_USR_TYPE2_NL))
+names(ongevallen_counts) <- c("Type", "Target", "Count")
+
+# Combineer de totalen met de ongevallen_counts
+combined_data <- merge(ongevallen_counts, total_per_type1, by="Type")
+
+# Bereken het percentage
+combined_data$Percentage <- (combined_data$Count / combined_data$Total) * 100
+
+# Formatteer de uitvoer
+combined_data <- combined_data[order(combined_data$Type, -combined_data$Percentage),]
+combined_data$Percentage <- paste(round(combined_data$Percentage, 2), "%", sep="")
+
+# Print de eerste paar rijen
+combined_data
+```
+
+We gebruiken een gestapelde staafdiagram om de proporties van ongevallen per weggebruikerstype te visualiseren. De grafiek toont het percentage van ongevallen voor elke combinatie van 'Type 1' en 'Type 2' weggebruikers, wat ons helpt te begrijpen welke combinaties het meest voorkomen en potentieel gevaarlijk zijn.
 
 
 ```{r}
-# Bibliotheken laden
-library(dplyr)
+# Zorg ervoor dat je de percentages hebt berekend zoals eerder aangegeven
+# Je moet de 'combined_data' dataframe hebben met kolommen 'Type', 'Target', 'Percentage'
 
-# Voorbeeld data (vervang dit met uw eigen dataset)
-# brede_data <- uw_brede_dataset
+# Omzetten van de percentage-kolom van een karakterreeks naar een numerieke waarde
+combined_data$Percentage <- as.numeric(gsub("%", "", combined_data$Percentage))
 
-# Procentuele verandering berekenen en toevoegen
-brede_data <- brede_data %>%
-  arrange(DT_YEAR_COLLISION) %>%
-  mutate(
-    Percentage_Stijging_Met_Doden = ((`Met doden` / lag(`Met doden`)) - 1) * 100,
-    Percentage_Stijging_Dodelijk_Gewonden = ((`dodelijk gewonden` / lag(`dodelijk gewonden`)) - 1) * 100
-  )
-
-# Vervang NA met 0 of een andere waarde indien nodig
-brede_data[is.na(brede_data)] <- 0
-
-# De resulterende dataset bekijken
-print(brede_data)
+# Maak de stacked bar chart
+ggplot(combined_data, aes(fill=Target, y=Percentage, x=Type)) + 
+    geom_bar(position="fill", stat="identity") +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = "Proportie van Ongevallen per Weggebruikerstype", x = "Type 1 Weggebruikers", y = "Percentage van Ongevallen", fill = "Type 2 Weggebruikers") +
+    theme_minimal() +
+    coord_flip()  # Optioneel, voor een horizontale layout
 ```
 
+
+Het onderstaande Sankey-diagram illustreert de stroom van verkeersongevallen, van provincies (links) naar wegtypen (rechts). Deze visualisatie benadrukt niet alleen de verdeling van dodelijke ongevallen, maar laat ook zien dat de meeste ongevallen voornamelijk plaatsvinden op gewestwegen.
 
 ```{r}
-# Bibliotheken laden
-library(ggplot2)
-library(tidyr)
-library(dplyr)
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+#library(networkD3)
 
-# Voorbeeld data (vervang dit met uw eigen dataset)
-# brede_data <- uw_brede_dataset
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
 
-# Data omzetten voor staafdiagram
-lange_data <- brede_data %>%
-  pivot_longer(
-    cols = starts_with("Percentage_Stijging"),
-    names_to = "Categorie",
-    values_to = "Percentage"
-  )
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_PROV_COLLISION_NL, gefilterde_data$CD_ROAD_TYPE_NL))
 
-# Staafdiagram maken
-ggplot(lange_data, aes(x = DT_YEAR_COLLISION, y = Percentage, fill = Categorie)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
-  theme_minimal() +
-  labs(title = "Procentuele Verandering per Jaar",
-       x = "Jaar",
-       y = "Procentuele Verandering",
-       fill = "Categorie")
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
+```
+
+bij de volgende gragieken probeerde ik het zelfde om andere conecties te vinden zonder veel succes.
+
+```{r}
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+#library(networkD3)
+
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
+
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$CD_ROAD_TYPE_NL, gefilterde_data$TX_ROAD_CONDITION_NL))
+
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
 
 ```
 
+```{r}
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+#library(networkD3)
+
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
+
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_WEATHER_NL, gefilterde_data$TX_ROAD_CONDITION_NL))
+
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
+
+```
+
+```{r}
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+#library(networkD3)
+
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
+
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_ROAD_USR_TYPE1_NL, gefilterde_data$TX_ROAD_USR_TYPE2_NL))
+
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
+
+```
+
+```{r}
+# Installeer en laad de benodigde packages
+#install.packages("networkD3")
+#library(networkD3)
+
+# Jouw dataset gefilterde_data met de kolommen TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+# gefilterde_data <- read.csv('jouw_data.csv')
+
+# Bereken het aantal ongevallen tussen elke combinatie van TX_ROAD_USR_TYPE1_NL en TX_ROAD_USR_TYPE2_NL
+ongevallen_counts <- as.data.frame(table(gefilterde_data$TX_COLLISION_TYPE_NL, gefilterde_data$CD_ROAD_TYPE_NL))
+
+# Hernoem de kolommen voor gebruik met networkD3
+colnames(ongevallen_counts) <- c("source", "target", "value")
+
+# Scheid de bron- en doelknooppunten
+source_nodes <- data.frame(name=as.character(unique(ongevallen_counts$source)))
+target_nodes <- data.frame(name=as.character(unique(ongevallen_counts$target)))
+
+# Voeg een prefix toe om ze uniek te maken
+source_nodes$name <- paste("Source", source_nodes$name, sep="_")
+target_nodes$name <- paste("Target", target_nodes$name, sep="_")
+
+# Maak een complete lijst van knooppunten
+nodes <- rbind(source_nodes, target_nodes)
+
+# Zet de source en target om naar numerieke indices
+ongevallen_counts$source <- match(paste("Source", ongevallen_counts$source, sep="_"), nodes$name) - 1
+ongevallen_counts$target <- match(paste("Target", ongevallen_counts$target, sep="_"), nodes$name) - 1
+
+# Maak het Sankey-diagram
+sankeyNetwork(Links = ongevallen_counts, Nodes = nodes, Source = "source", Target = "target", Value = "value", NodeID = "name", units = "Ongevallen")
+
+```
+
+## Gemeenten
+
+Hier zien we welke gemeentes er de meeste dodelijke ongevallen hebben per weg type.
 
 ```{r}
 # Voorbereiden van de data
-data_summary <- data %>%
+data_summary <- gefilterde_data %>%
   group_by(TX_MUNTY_COLLISION_NL) %>%
   summarise(Count = n()) %>%
   arrange(desc(Count))
@@ -352,43 +697,223 @@ data_summary <- data %>%
 treemap(data_summary,
         index = "TX_MUNTY_COLLISION_NL",
         vSize = "Count",
-        title = "Treemap van TX_MUNTY_COLLISION_NL")
+        title = "AlleL")
 ```
-
 ```{r}
+# Filteren van de data om alleen 'Autosnelweg' te tonen in CD_ROAD_TYPE_NL
+gefilterde_autosnelweg_data <- gefilterde_data %>%
+  filter(CD_ROAD_TYPE_NL == "Autosnelweg")
+
 # Voorbereiden van de data
-links <- data %>%
-  count(TX_ROAD_USR_TYPE2_NL = TX_ROAD_USR_TYPE1_NL, Target = TX_ROAD_USR_TYPE2_NL) %>%
-  filter(n > 0)
+data_summary <- gefilterde_autosnelweg_data %>%
+  group_by(TX_MUNTY_COLLISION_NL) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
 
-# Creëren van een lijst van unieke nodes
-nodes <- data.frame(name = unique(c(links$TX_ROAD_USR_TYPE2_NL, links$Target)))
-
-# Omzetten van de bron- en doelnamen naar indices
-links$TX_ROAD_USR_TYPE2_NL <- match(links$Source, nodes$name) - 1
-links$Target <- match(links$Target, nodes$name) - 1
-
-# Maken van het Sankey-diagram
-sankeyNetwork(Links = links, Nodes = nodes, Source = "Source", Target = "Target", 
-              Value = "n", NodeID = "name", units = "Aantal")
-
+# Maken van de treemap
+treemap(data_summary,
+        index = "TX_MUNTY_COLLISION_NL",
+        vSize = "Count",
+        title = "Autosnelwegen")
 ```
 
 ```{r}
-#install.packages("networkD3")
+# Filteren van de data om alleen 'Autosnelweg' te tonen in CD_ROAD_TYPE_NL
+gefilterde_autosnelweg_data <- gefilterde_data %>%
+  filter(CD_ROAD_TYPE_NL == "Gemeenteweg")
 
-# Laden van de benodigde library
-library(networkD3)
+# Voorbereiden van de data
+data_summary <- gefilterde_autosnelweg_data %>%
+  group_by(TX_MUNTY_COLLISION_NL) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
 
-# Uw bestaande code
-nodes <- data.frame(name=c(as.character(gefilterde_data$TX_ROAD_USR_TYPE1_NL), as.character(gefilterde_data$TX_ROAD_USR_TYPE2_NL)) %>% unique())
-
-gefilterde_data$IDTX_ROAD_USR_TYPE1_NL=match(gefilterde_data$TX_ROAD_USR_TYPE1_NL, nodes$name)-1 
-gefilterde_data$IDTX_ROAD_USR_TYPE2_NL=match(gefilterde_data$TX_ROAD_USR_TYPE2_NL, nodes$name)-1
-
-ColourScal ='d3.scaleOrdinal() .range(["#FDE725FF","#B4DE2CFF","#6DCD59FF","#35B779FF","#1F9E89FF","#26828EFF","#31688EFF","#3E4A89FF","#482878FF","#440154FF"])'
-
-sankeyNetwork(Links = gefilterde_data, Nodes = nodes, Source = "IDTX_ROAD_USR_TYPE1_NL", Target = "IDTX_ROAD_USR_TYPE2_NL", Value = "value", NodeID = "name", sinksRight=FALSE, colourScale=ColourScal, nodeWidth=40, fontSize=13, nodePadding=20)
-
+# Maken van de treemap
+treemap(data_summary,
+        index = "TX_MUNTY_COLLISION_NL",
+        vSize = "Count",
+        title = "Gemeenteweg")
 ```
+
+```{r}
+
+# Filteren van de data om alleen 'Autosnelweg' te tonen in CD_ROAD_TYPE_NL
+gefilterde_autosnelweg_data <- gefilterde_data %>%
+  filter(CD_ROAD_TYPE_NL == "Gewestweg")
+
+# Voorbereiden van de data
+data_summary <- gefilterde_autosnelweg_data %>%
+  group_by(TX_MUNTY_COLLISION_NL) %>%
+  summarise(Count = n()) %>%
+  arrange(desc(Count))
+
+# Maken van de treemap
+treemap(data_summary,
+        index = "TX_MUNTY_COLLISION_NL",
+        vSize = "Count",
+        title = "Gewestweg")
+```
+
+```{r include=FALSE}
+library(leaflet)
+library(geosphere)
+
+dichtbij_elkaar <- function(data, max_afstand = 50) {
+  resultaten <- data.frame()
+  for (i in 1:(nrow(data) - 1)) {
+    for (j in (i + 1):nrow(data)) {
+      afstand <- distm(c(data$LONG_WGS84[i], data$LAT_WGS84[i]), 
+                       c(data$LONG_WGS84[j], data$LAT_WGS84[j]),
+                       fun = distHaversine)
+      if (!is.na(afstand) && afstand <= max_afstand) {
+        resultaten <- rbind(resultaten, data[i, ])
+        resultaten <- rbind(resultaten, data[j, ])
+      }
+    }
+  }
+  return(unique(resultaten))
+}
+
+dichtbij_data <- dichtbij_elkaar(gefilterde_data)
+dichtbij_data_50 <- dichtbij_data
+#dichtbij_data_10
+dichtbij_data_50
+#dichtbij_data_100
+#dichtbij_data_250 
+#dichtbij_data_500
+
+
+dichtbij_data_50$popup_info <- paste("Jaar: ", dichtbij_data_50$DT_YEAR_COLLISION, 
+                                  "<br>Info 1: ", dichtbij_data_50$TX_ROAD_CONDITION_NL,
+                                  "<br>Info 2: ", dichtbij_data_50$TX_ROAD_USR_TYPE1_NL)
+
+#write.csv(dichtbij_data, "DATA/dichtbij_data.csv")
+```
+
+### Clusters
+
+De onderstaande kaart toont alle dodelijke ongevallen die zich hebben voorgedaan binnen een straal van 50 meter van elkaar.
+
+Maar ik ben niet de enige die hieraan heeft gedacht. Bekijk de link voor de situering van verkeersongevallen:
+<https://statbel.fgov.be/nl/themas/mobiliteit/verkeer/verkeersongevallen#panel-15> 
+
+Zie de link voor alle zwarte punten in Vlaanderen:
+<https://www.vlaanderen.be/gevaarlijke-punten>
+
+```{r}
+kaart <- leaflet(dichtbij_data) %>% addTiles()
+
+kaart <- kaart %>% addCircleMarkers(lng = dichtbij_data_50$LONG_WGS84, lat = dichtbij_data_50$LAT_WGS84, 
+                                    popup = dichtbij_data_50$popup_info, radius = 5, 
+                                    color = "#E07154", stroke = FALSE, fillOpacity = 0.4)
+kaart
+```
+
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#install.packages("geosphere")
+library(geosphere)
+gefilterde_data_2
+
+dichtbij_elkaar_ALL <- function(data, max_afstand = 50) {
+  resultaten <- data.frame()
+  for (i in 1:(nrow(data) - 1)) {
+    for (j in (i + 1):nrow(data)) {
+      afstand <- distm(c(data$LONG_WGS84[i], data$LAT_WGS84[i]), 
+                       c(data$LONG_WGS84[j], data$LAT_WGS84[j]),
+                       fun = distHaversine)
+      if (!is.na(afstand) && afstand <= max_afstand) {
+        resultaten <- rbind(resultaten, data[i, ])
+        resultaten <- rbind(resultaten, data[j, ])
+      }
+    }
+  }
+  return(unique(resultaten))
+}
+
+dichtbij_data <- dichtbij_elkaar_ALL(gefilterde_data_2)
+dichtbij_data_50_2 <- dichtbij_data
+dichtbij_data_50_2
+
+
+dichtbij_data50_2$popup_info <- paste("Jaar: ", dichtbij_data50_2$DT_YEAR_COLLISION, 
+                                  "<br>Info 1: ", dichtbij_data50_2$TX_ROAD_CONDITION_NL,
+                                  "<br>Info 2: ", dichtbij_data50_2$TX_ROAD_USR_TYPE1_NL)
+
+kaart <- leaflet(dichtbij_data) %>% addTiles()
+
+# Functie om kleuren toe te wijzen op basis van TX_CLASS_ACCIDENTS_NL
+assignColor <- function(accident_class) {
+  if(accident_class == "met lichtgewonden") {
+    return("#627D94") # Rood
+  } else if(accident_class == "met zwaargewonden") {
+    return("#627D94") # Groen
+  } else {
+    return("#E07154") # Blauw, of een andere standaardkleur
+  }
+}
+
+# Gebruik de functie in je leaflet code
+kaart <- kaart %>% addCircleMarkers(lng = dichtbij_data50_2$LONG_WGS84, 
+                                    lat = dichtbij_data50_2$LAT_WGS84, 
+                                    popup = dichtbij_data50_2$popup_info, 
+                                    radius = 5, 
+                                    color = sapply(dichtbij_data50_2$TX_CLASS_ACCIDENTS_NL, assignColor), 
+                                    stroke = FALSE, 
+                                    fillOpacity = 0.4)
+
+
+kaart <- kaart %>% addCircleMarkers(lng = dichtbij_data_50$LONG_WGS84, lat = dichtbij_data_50$LAT_WGS84, 
+                                    popup = dichtbij_data_50$popup_info, radius = 5, 
+                                    color = "#E07154", stroke = FALSE, fillOpacity = 0.4)
+kaart
+```
+
+### Per gemeente
+
+Omdat ik deze data niet zo goed kan weergeven als in Datawrapper, hier zijn de links naar de gemeentekaarten en het aantal doden per wegtype.
+
+
+[Gewestweg](https://www.datawrapper.de/_/BuPT9/) 
+[Gemeenteweg](https://www.datawrapper.de/_/eLKZU/) 
+[Autosnelweg](https://www.datawrapper.de/_/tMNzn/) 
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, include=FALSE}
+# Groepeer de data en tel de ongevallen
+ongevallen_per_gemeente <- gefilterde_data %>%
+  group_by(TX_MUNTY_COLLISION_NL, DT_YEAR_COLLISION, CD_ROAD_TYPE_NL, CD_NIS) %>%
+  summarise(Aantal_Ongevallen = n(), .groups = 'drop')
+
+# Groepeer de data en tel de ongevallen per gemeente en wegtype, inclusief CD_NIS
+ongevallen_per_gemeente_en_wegtype <- gefilterde_data %>%
+  mutate(Jaar = as.character(DT_YEAR_COLLISION)) %>%
+  filter(Jaar %in% c("2017", "2018", "2019", "2020", "2021", "2022")) %>%
+  group_by(TX_MUNTY_COLLISION_NL, CD_NIS, CD_ROAD_TYPE_NL,  Jaar) %>%
+  summarise(Aantal_Ongevallen = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = Jaar, values_from = Aantal_Ongevallen, values_fill = list(Aantal_Ongevallen = 0)) %>%
+  rename(`_2017` = `2017`, `_2018` = `2018`, `_2019` = `2019`, `_2020` = `2020`, `_2021` = `2021`, `_2022` = `2022`) %>%
+  rowwise() %>%
+  mutate(Totaal = sum(`_2017`, `_2018`, `_2019`, `_2020`, `_2021`, `_2022`))
+
+ongevallen_per_gemeente_en_wegtype
+
+# Eerder gedefinieerde ongevallen_per_gemeente_en_wegtype
+
+# Filter datasets
+autosnelweg_data <- ongevallen_per_gemeente_en_wegtype %>%
+  filter(CD_ROAD_TYPE_NL == "Autosnelweg")
+
+gemeenteweg_data <- ongevallen_per_gemeente_en_wegtype %>%
+  filter(CD_ROAD_TYPE_NL == "Gemeenteweg")
+
+gewestweg_data <- ongevallen_per_gemeente_en_wegtype %>%
+  filter(CD_ROAD_TYPE_NL == "Gewestweg")
+
+# Exporteer datasets naar CSV
+write.csv(autosnelweg_data, "Autosnelweg_Data.csv", row.names = FALSE)
+write.csv(gemeenteweg_data, "Gemeenteweg_Data.csv", row.names = FALSE)
+write.csv(gewestweg_data, "Gewestweg_Data.csv", row.names = FALSE)
+```
+
 
